@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Agora-Calyce/terraform-provider-spx/internal/client"
 
@@ -320,8 +321,9 @@ func (r *eipResource) mapEipToModel(ctx context.Context, data *eipResourceModel,
 		data.SNAT = types.ListNull(types.StringType)
 	}
 
-	data.DNAT = make([]eipDNATModel, 0, len(eip.DNAT))
-	for _, d := range eip.DNAT {
+	dnat := orderDNATLike(eip.DNAT, data.DNAT)
+	data.DNAT = make([]eipDNATModel, 0, len(dnat))
+	for _, d := range dnat {
 		data.DNAT = append(data.DNAT, eipDNATModel{
 			ExternalPort: types.StringValue(d.ExternalPort),
 			InternalIP:   types.StringValue(d.InternalIP),
@@ -329,4 +331,31 @@ func (r *eipResource) mapEipToModel(ctx context.Context, data *eipResourceModel,
 			Protocol:     types.StringValue(d.Protocol),
 		})
 	}
+}
+
+// orderDNATLike returns the DNAT rules in the order of the prior plan/state: SPX does not
+// guarantee their order, which otherwise shows a perpetual diff and fails apply with an
+// inconsistent result. Rules missing from prior are appended at the end in API order.
+func orderDNATLike(rules []client.EipDNAT, prior []eipDNATModel) []client.EipDNAT {
+	used := make([]bool, len(rules))
+	ordered := make([]client.EipDNAT, 0, len(rules))
+	for _, p := range prior {
+		for i, r := range rules {
+			if !used[i] &&
+				r.ExternalPort == p.ExternalPort.ValueString() &&
+				r.InternalIP == p.InternalIP.ValueString() &&
+				r.InternalPort == p.InternalPort.ValueString() &&
+				strings.EqualFold(r.Protocol, p.Protocol.ValueString()) {
+				used[i] = true
+				ordered = append(ordered, r)
+				break
+			}
+		}
+	}
+	for i, r := range rules {
+		if !used[i] {
+			ordered = append(ordered, r)
+		}
+	}
+	return ordered
 }

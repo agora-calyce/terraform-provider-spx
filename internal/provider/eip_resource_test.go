@@ -8,6 +8,7 @@ import (
 	"github.com/Agora-Calyce/terraform-provider-spx/internal/client"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
@@ -52,6 +53,40 @@ func TestEipResourceMapping(t *testing.T) {
 	} else {
 		if model.DNAT[0].ExternalPort.ValueString() != "80" {
 			t.Errorf("expected DNAT ExternalPort 80, got %s", model.DNAT[0].ExternalPort.ValueString())
+		}
+	}
+}
+
+func TestEipResourceMapping_DNATKeepsPriorOrder(t *testing.T) {
+	ctx := context.Background()
+	r := &eipResource{}
+
+	model := &eipResourceModel{DNAT: []eipDNATModel{
+		{ExternalPort: types.StringValue("80"), InternalIP: types.StringValue("10.0.0.10"), InternalPort: types.StringValue("80"), Protocol: types.StringValue("tcp")},
+		{ExternalPort: types.StringValue("22"), InternalIP: types.StringValue("10.0.0.10"), InternalPort: types.StringValue("22"), Protocol: types.StringValue("tcp")},
+	}}
+	eip := &client.Eip{
+		ID: "eip-123",
+		DNAT: []client.EipDNAT{
+			{ExternalPort: "443", InternalIP: "10.0.0.10", InternalPort: "443", Protocol: "tcp"},
+			{ExternalPort: "22", InternalIP: "10.0.0.10", InternalPort: "22", Protocol: "tcp"},
+			{ExternalPort: "80", InternalIP: "10.0.0.10", InternalPort: "80", Protocol: "tcp"},
+		},
+	}
+
+	var diags diag.Diagnostics
+	r.mapEipToModel(ctx, model, eip, "orga", "az", "project", &diags)
+	if diags.HasError() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+
+	want := []string{"80", "22", "443"}
+	if len(model.DNAT) != len(want) {
+		t.Fatalf("expected %d DNAT rules, got %d", len(want), len(model.DNAT))
+	}
+	for i, port := range want {
+		if got := model.DNAT[i].ExternalPort.ValueString(); got != port {
+			t.Errorf("DNAT[%d]: expected external port %s, got %s", i, port, got)
 		}
 	}
 }
