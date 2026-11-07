@@ -51,7 +51,10 @@ You can also configure the provider using environment variables:
 
 ## Examples
 
-The `examples` folder has multiple terraform infrastructures.
+The `examples` folder has two kinds of content:
+
+- `examples/projects/<resource>/`: runnable Terraform projects, one per resource, plus `full/` (VM + EIP + load balancer + security group). Fill in `terraform.tfvars`, then run `terraform init && terraform apply`.
+- `examples/provider/`, `examples/resources/<type>/` and `examples/data-sources/<type>/`: short snippets that `make docs` puts in the "Example Usage" section of each Registry page.
 
 ## Releasing
 
